@@ -7,21 +7,44 @@ from datetime import datetime, timedelta
 # --- إعدادات الصفحة ---
 st.set_page_config(page_title="مدير المهام الاحترافي", page_icon="📅", layout="wide")
 
-# --- قائمة المهام الأساسية الثابتة (تم ضبط الكتابة هنا) ---
+# --- 🔒 نظام حماية الدخول ---
+def check_password():
+    """دالة للتحقق من كلمة المرور"""
+    def password_entered():
+        # يمكنك تغيير كلمة المرور من هنا (بدل '1234')
+        if st.session_state["password"] == "Asd12345":
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # مسح كلمة المرور من الذاكرة للأمان
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        # شاشة الدخول لأول مرة
+        st.title("🔐 تسجيل الدخول")
+        st.text_input("أدخل كلمة المرور للوصول للنظام", type="password", on_change=password_entered, key="password")
+        return False
+    elif not st.session_state["password_correct"]:
+        # في حال كانت كلمة المرور خطأ
+        st.title("🔐 تسجيل الدخول")
+        st.text_input("كلمة المرور غير صحيحة، حاول مجدداً", type="password", on_change=password_entered, key="password")
+        st.error("❌ عذراً، كلمة المرور خاطئة")
+        return False
+    else:
+        # كلمة المرور صحيحة
+        return True
+
+# إذا فشل التحقق من كلمة المرور، توقف عن تنفيذ باقي الكود
+if not check_password():
+    st.stop()
+
+# --- قائمة المهام الأساسية الثابتة ---
 DEFAULT_CORE_TASKS = [
-    "صلاة الفجر", 
-    "صلاة الصبح", 
-    "صلاة الضحى", 
-    "صلاة الظهر", 
-    "صلاة العصر", 
-    "صلاة المغرب", 
-    "صلاة العشاء", 
-    "صلاة الوتر", 
-    "قراءة القرآن"
+    "صلاة الفجر", "صلاة الصبح", "صلاة الضحى", "صلاة الظهر",
+    "صلاة العصر", "صلاة المغرب", "صلاة العشاء", "صلاة الوتر", "قراءة القرآن"
 ]
 
 # --- الاتصال بـ Google Sheets ---
-scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+scopes = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
 @st.cache_resource
 def get_gsheet_client():
@@ -50,7 +73,12 @@ def load_data():
         return df
     return pd.DataFrame(columns=['Date', 'Task', 'Status', 'Category'])
 
-# --- واجهة المستخدم ---
+# --- واجهة المستخدم الرئيسية (تظهر بعد الدخول) ---
+st.sidebar.success("تم تسجيل الدخول بنجاح ✅")
+if st.sidebar.button("تسجيل الخروج"):
+    st.session_state["password_correct"] = False
+    st.rerun()
+
 st.title("📝 نظام متابعة المهام الذكي")
 
 # --- 1. إضافة مهمة جديدة ---
@@ -107,7 +135,6 @@ st.subheader(f"📋 قائمة المهام: {selected_date if view_option == '�
 if not filtered_df.empty:
     status_options = ["ليس بعد", "لم يتم", "تم"]
     
-    # رؤوس الأعمدة
     h1, h2, h3, h4, h5 = st.columns([2, 4, 2, 2, 3])
     h1.write("**التاريخ**")
     h2.write("**المهمة**")
@@ -118,11 +145,9 @@ if not filtered_df.empty:
     
     for _, row in filtered_df.iterrows():
         r1, r2, r3, r4, r5 = st.columns([2, 4, 2, 2, 3])
-        
         r1.write(row['Date'])
         r2.write(f"**{row['Task']}**")
         
-        # عرض الحالة بتنسيق ملون
         curr_status = row['Status']
         if curr_status == "تم":
             r3.success("تم ✅")
@@ -133,11 +158,8 @@ if not filtered_df.empty:
             
         r4.caption(row['Category'])
         
-        # جزء الإجراءات (قائمة لاختيار الحالة + زر حذف)
         with r5:
             col_sel, col_del = st.columns([3, 1])
-            
-            # 1. قائمة اختيار الحالة
             try:
                 curr_index = status_options.index(curr_status)
             except:
@@ -155,7 +177,6 @@ if not filtered_df.empty:
                 sheet.update_cell(int(row['row_idx']), 3, chosen_status)
                 st.rerun()
             
-            # 2. زر الحذف
             if col_del.button("🗑️", key=f"del_{row['row_idx']}"):
                 sheet.delete_rows(int(row['row_idx']))
                 st.rerun()
