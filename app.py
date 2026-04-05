@@ -4,86 +4,136 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime
 
-# إعدادات الصفحة
-st.set_page_config(page_title="مدير المهام اليومية", page_icon="📝", layout="wide")
+# --- إعدادات الصفحة ---
+st.set_page_config(page_title="مدير المهام الذكي", page_icon="📅", layout="wide")
 
-# الصلاحيات
+# --- الاتصال بـ Google Sheets ---
 scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
 @st.cache_resource
 def get_gsheet_client():
-    creds_dict = st.secrets["gcp_service_account"]
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    return gspread.authorize(creds)
+    try:
+        creds_dict = st.secrets["gcp_service_account"]
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        return gspread.authorize(creds)
+    except Exception as e:
+        st.error("❌ فشل في تحميل بيانات الاعتماد من Secrets. تأكد من إعدادها في Streamlit Cloud.")
+        st.stop()
 
+client = get_gsheet_client()
+# تأكد أن اسم ملف الـ Google Sheet هو "TaskTracker" بالضبط
 try:
-    client = get_gsheet_client()
-    # تأكد من وضع الـ ID الخاص بملفك هنا أو اسم الملف بدقة
     sheet = client.open("TaskTracker").sheet1
 except Exception as e:
-    st.error(f"خطأ في الاتصال: {e}")
+    st.error(f"❌ لم يتم العثور على ملف باسم 'TaskTracker'. تأكد من التسمية ومشاركة الملف مع الإيميل البرمجي. الخطأ: {e}")
     st.stop()
 
-st.title("📝 نظام متابعة المهام")
+# --- دالة لجلب البيانات وتجهيزها ---
+def load_data():
+    raw_data = sheet.get_all_values()
+    if len(raw_data) > 1:
+        # تحويل البيانات إلى DataFrame باستخدام الصف الأول كعناوين
+        df = pd.DataFrame(raw_data[1:], columns=raw_data[0])
+        # إضافة رقم الصف الفعلي (البيانات تبدأ من الصف 2 في الإكسل)
+        df['row_idx'] = range(2, len(df) + 2)
+        return df
+    return pd.DataFrame(columns=['Date', 'Task', 'Status', 'Category'])
 
-# --- جزء إضافة مهمة جديدة ---
-with st.expander("➕ إضافة مهمة جديدة", expanded=True):
-    with st.form("add_form", clear_on_submit=True):
-        col1, col2 = st.columns(2)
+# --- واجهة المستخدم ---
+st.title("📝 نظام متابعة المهام اليومية والشهرية")
+st.markdown("إدارة مهامك وربطها بـ Google Sheets مباشرة")
+
+# --- 1. قسم إضافة مهمة جديدة ---
+with st.expander("➕ إضافة مهمة جديدة", expanded=False):
+    with st.form("task_form", clear_on_submit=True):
+        col1, col2, col3, col4 = st.columns([2, 4, 2, 2])
         with col1:
-            task_date = st.date_input("التاريخ", datetime.now())
-            task_name = st.text_input("المهمة")
+            new_date = st.date_input("التاريخ", datetime.now())
         with col2:
-            task_status = st.selectbox("الحالة", ["لم يتم", "تم"])
-            task_cat = st.selectbox("التصنيف", ["يومية", "شهرية", "سنوية"])
+            new_task = st.text_input("وصف المهمة")
+        with col3:
+            new_status = st.selectbox("الحالة", ["لم يتم", "تم"])
+        with col4:
+            new_cat = st.selectbox("التصنيف", ["يومية", "شهرية", "سنوية"])
         
-        submit = st.form_submit_button("حفظ المهمة في Google Sheet")
+        submit = st.form_submit_button("حفظ المهمة")
         
         if submit:
-            if task_name:
-                # الترتيب الجديد: Date, Task, Status, Category
-                new_row = [str(task_date), task_name, task_status, task_cat]
-                sheet.append_row(new_row)
-                st.success(f"✅ تم إضافة: {task_name}")
+            if new_task:
+                # الترتيب: Date, Task, Status, Category
+                sheet.append_row([str(new_date), new_task, new_status, new_cat])
+                st.success(f"✅ تم إضافة: {new_task}")
                 st.rerun()
             else:
-                st.error("الرجاء كتابة اسم المهمة")
+                st.warning("⚠️ يرجى كتابة وصف المهمة")
 
 st.divider()
 
-# --- جزء عرض ومتابعة المهام ---
-st.subheader("📊 جدول المتابعة")
+# --- 2. عرض البيانات والتحكم بها ---
+df = load_data()
 
-try:
-    data = sheet.get_all_values()
-    if len(data) > 1:
-        # تحويل البيانات لـ DataFrame مع تسمية الأعمدة حسب طلبك
-        df = pd.DataFrame(data[1:], columns=data[0])
-        
-        # فلاتر سريعة في الأعلي
-        f_col1, f_col2 = st.columns(2)
-        with f_col1:
-            q_cat = st.multiselect("تصفية حسب النوع", ["يومية", "شهرية", "سنوية"], default=["يومية", "شهرية", "سنوية"])
-        with f_col2:
-            q_status = st.multiselect("تصفية حسب الحالة", ["تم", "لم يتم"], default=["تم", "لم يتم"])
-        
-        # تطبيق التصفية
-        mask = df['Category'].isin(q_cat) & df['Status'].isin(q_status)
-        filtered_df = df[mask]
-        
-        # عرض الجدول مع تلوين الحالات (اختياري)
-        def color_status(val):
-            color = '#90ee90' if val == 'تم' else '#ffcccb'
-            return f'background-color: {color}'
+if not df.empty:
+    # الفلاتر (SideBar)
+    st.sidebar.header("🔍 تصفية المهام")
+    filter_cat = st.sidebar.multiselect("حسب التصنيف", options=df['Category'].unique(), default=df['Category'].unique())
+    filter_stat = st.sidebar.multiselect("حسب الحالة", options=df['Status'].unique(), default=df['Status'].unique())
 
-        st.dataframe(filtered_df.style.applymap(color_status, subset=['Status']), use_container_width=True)
+    # تطبيق التصفية
+    mask = df['Category'].isin(filter_cat) & df['Status'].isin(filter_stat)
+    filtered_df = df[mask]
+
+    # إحصائيات سريعة
+    c1, c2, c3 = st.columns(3)
+    c1.metric("إجمالي المهام", len(filtered_df))
+    c2.metric("منجزة ✅", len(filtered_df[filtered_df['Status'] == 'تم']))
+    c3.metric("قيد الانتظار ⏳", len(filtered_df[filtered_df['Status'] == 'لم يتم']))
+
+    st.subheader("📋 قائمة المهام")
+    
+    # رأس الجدول يدوي لتنسيق أفضل
+    h1, h2, h3, h4, h5 = st.columns([2, 4, 2, 2, 3])
+    h1.write("**التاريخ**")
+    h2.write("**المهمة**")
+    h3.write("**الحالة**")
+    h4.write("**التصنيف**")
+    h5.write("**إجراءات**")
+    st.markdown("---")
+
+    # عرض الصفوف مع أزرار التحكم
+    for index, row in filtered_df.iterrows():
+        r1, r2, r3, r4, r5 = st.columns([2, 4, 2, 2, 3])
         
-        # إحصائيات بسيطة
-        total = len(filtered_df)
-        completed = len(filtered_df[filtered_df['Status'] == 'تم'])
-        st.info(f"إحصائيات القائمة الحالية: إجمالي {total} | منجز {completed} | متبقي {total - completed}")
+        r1.write(row['Date'])
+        r2.write(f"**{row['Task']}**")
         
-    else:
-        st.info("الشيت فارغ حالياً، قم بإضافة أول مهمة.")
-except Exception as e:
-    st.warning("تأكد أن الصف الأول في Google Sheet يحتوي على العناوين: Date, Task, Status, Category")
+        # تلوين الحالة
+        if row['Status'] == "تم":
+            r3.success("تم")
+        else:
+            r3.error("لم يتم")
+            
+        r4.caption(row['Category'])
+        
+        # أزرار الإجراءات
+        with r5:
+            btn_col1, btn_col2 = st.columns(2)
+            
+            # زر تغيير الحالة (Toggle)
+            toggle_label = "إلغاء" if row['Status'] == "تم" else "تم"
+            if btn_col1.button(toggle_label, key=f"tgl_{row['row_idx']}"):
+                new_stat = "لم يتم" if row['Status'] == "تم" else "تم"
+                sheet.update_cell(int(row['row_idx']), 3, new_stat) # العمود 3 هو Status
+                st.rerun()
+            
+            # زر الحذف
+            if btn_col2.button("🗑️", key=f"del_{row['row_idx']}"):
+                sheet.delete_rows(int(row['row_idx']))
+                st.rerun()
+        st.markdown("<hr style='margin:0; padding:0; opacity:0.2'>", unsafe_allow_html=True)
+
+else:
+    st.info("💡 لا توجد مهام حالياً. استخدم القائمة أعلاه لإضافة أول مهمة.")
+
+# --- تذييل الصفحة ---
+st.sidebar.markdown("---")
+st.sidebar.caption("تم الربط مع Google Sheets بنجاح ✅")
