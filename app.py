@@ -7,8 +7,18 @@ from datetime import datetime, timedelta
 # --- إعدادات الصفحة ---
 st.set_page_config(page_title="مدير المهام الاحترافي", page_icon="📅", layout="wide")
 
-# --- قائمة المهام الأساسية الثابتة ---
-DEFAULT_CORE_TASKS = ["صلاة الفجر", "قراءة القرآن", "الورد اليومي", "ممارسة الرياضة"]
+# --- قائمة المهام الأساسية الثابتة (تم ضبط الكتابة هنا) ---
+DEFAULT_CORE_TASKS = [
+    "صلاة الفجر", 
+    "صلاة الصبح", 
+    "صلاة الضحى", 
+    "صلاة الظهر", 
+    "صلاة العصر", 
+    "صلاة المغرب", 
+    "صلاة العشاء", 
+    "صلاة الوتر", 
+    "قراءة القرآن"
+]
 
 # --- الاتصال بـ Google Sheets ---
 scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -27,7 +37,7 @@ client = get_gsheet_client()
 try:
     sheet = client.open("TaskTracker").sheet1
 except:
-    st.error("❌ لم يتم العثور على 'TaskTracker'.")
+    st.error("❌ لم يتم العثور على 'TaskTracker'. تأكد من وجود الملف ومشاركته.")
     st.stop()
 
 # --- دالة لجلب البيانات ---
@@ -43,36 +53,30 @@ def load_data():
 # --- واجهة المستخدم ---
 st.title("📝 نظام متابعة المهام الذكي")
 
-# --- 1. إضافة مهمة جديدة مع خيار التكرار ---
+# --- 1. إضافة مهمة جديدة ---
 with st.expander("➕ إضافة مهمة جديدة", expanded=False):
     with st.form("task_form", clear_on_submit=True):
         c1, c2, c3, c4 = st.columns([2, 4, 2, 2])
         new_date = c1.date_input("التاريخ", datetime.now())
         new_task = c2.text_input("وصف المهمة")
-        new_status = c3.selectbox("الحالة", ["ليس بعد", "لم يتم", "تم"])
+        new_status = c3.selectbox("الحالة الابتدائية", ["ليس بعد", "لم يتم", "تم"])
         new_cat = c4.selectbox("التصنيف", ["يومية", "شهرية", "سنوية"])
         
-        # ميزة التكرار لليوم التالي
         repeat_tomorrow = st.checkbox("🔄 تكرار هذه المهمة لليوم التالي تلقائياً؟")
         
         if st.form_submit_button("حفظ المهمة"):
             if new_task:
-                # إضافة المهمة الأصلية
                 sheet.append_row([str(new_date), new_task, new_status, new_cat])
-                
-                # إضافة نسخة لليوم التالي إذا تم تفعيل الخيار
                 if repeat_tomorrow:
                     tomorrow_date = new_date + timedelta(days=1)
                     sheet.append_row([str(tomorrow_date), new_task, "ليس بعد", new_cat])
-                    st.info(f"تم جدولة نسخة لليوم التالي: {tomorrow_date}")
-                
-                st.success("تم الحفظ بنجاح!")
+                st.success("تم الحفظ!")
                 st.rerun()
 
 st.divider()
 df = load_data()
 
-# --- 2. فلاتر العرض ---
+# --- 2. خيارات العرض ---
 st.sidebar.header("🔍 خيارات العرض")
 view_option = st.sidebar.radio("المدى الزمني:", ["كل التواريخ", "تاريخ محدد"])
 selected_date = datetime.now().date()
@@ -87,7 +91,7 @@ if not df.empty:
 else:
     filtered_df = pd.DataFrame()
 
-# --- 3. زر المهام الأساسية السريع ---
+# --- 3. زر المهام الأساسية ---
 if view_option == "تاريخ محدد":
     existing = filtered_df['Task'].tolist() if not filtered_df.empty else []
     missing = [t for t in DEFAULT_CORE_TASKS if t not in existing]
@@ -98,49 +102,64 @@ if view_option == "تاريخ محدد":
             st.rerun()
 
 # --- 4. عرض الجدول النهائي ---
-st.subheader(f"📋 قائمة مهام: {selected_date if view_option == 'تاريخ محدد' else 'الكل'}")
+st.subheader(f"📋 قائمة المهام: {selected_date if view_option == 'تاريخ محدد' else 'الكل'}")
 
 if not filtered_df.empty:
-    # ترتيب الحالات لسهولة التغيير
-    status_order = ["ليس بعد", "لم يتم", "تم"]
+    status_options = ["ليس بعد", "لم يتم", "تم"]
     
     # رؤوس الأعمدة
     h1, h2, h3, h4, h5 = st.columns([2, 4, 2, 2, 3])
     h1.write("**التاريخ**")
     h2.write("**المهمة**")
-    h3.write("**الحالة**")
+    h3.write("**الحالة الحالية**")
     h4.write("**التصنيف**")
-    h5.write("**إجراءات**")
+    h5.write("**تعديل الحالة / إجراء**")
+    st.markdown("---")
     
     for _, row in filtered_df.iterrows():
         r1, r2, r3, r4, r5 = st.columns([2, 4, 2, 2, 3])
+        
         r1.write(row['Date'])
         r2.write(f"**{row['Task']}**")
         
-        # تنسيق لون الحالة
-        current_status = row['Status']
-        if current_status == "تم":
+        # عرض الحالة بتنسيق ملون
+        curr_status = row['Status']
+        if curr_status == "تم":
             r3.success("تم ✅")
-        elif current_status == "لم يتم":
+        elif curr_status == "لم يتم":
             r3.error("لم يتم ❌")
         else:
             r3.warning("ليس بعد ⏳")
             
         r4.caption(row['Category'])
         
+        # جزء الإجراءات (قائمة لاختيار الحالة + زر حذف)
         with r5:
-            c_next, c_del = st.columns(2)
-            # زر التبديل الدوري بين الحالات
-            current_idx = status_order.index(current_status) if current_status in status_order else 0
-            next_status = status_order[(current_idx + 1) % len(status_order)]
+            col_sel, col_del = st.columns([3, 1])
             
-            if c_next.button(f"➔ {next_status}", key=f"nxt_{row['row_idx']}"):
-                sheet.update_cell(int(row['row_idx']), 3, next_status)
+            # 1. قائمة اختيار الحالة
+            try:
+                curr_index = status_options.index(curr_status)
+            except:
+                curr_index = 0
+
+            chosen_status = col_sel.selectbox(
+                "تغيير إلى:", 
+                status_options, 
+                index=curr_index, 
+                key=f"sel_{row['row_idx']}",
+                label_visibility="collapsed"
+            )
+            
+            if chosen_status != curr_status:
+                sheet.update_cell(int(row['row_idx']), 3, chosen_status)
                 st.rerun()
             
-            if c_del.button("🗑️", key=f"del_{row['row_idx']}"):
+            # 2. زر الحذف
+            if col_del.button("🗑️", key=f"del_{row['row_idx']}"):
                 sheet.delete_rows(int(row['row_idx']))
                 st.rerun()
-        st.markdown("---")
+        
+        st.markdown("<hr style='margin:0; padding:0; opacity:0.1'>", unsafe_allow_html=True)
 else:
-    st.info("لا توجد مهام حالياً.")
+    st.info("لا توجد مهام معروضة حالياً.")
