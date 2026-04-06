@@ -12,7 +12,7 @@ def check_password():
     """دالة للتحقق من كلمة المرور"""
     def password_entered():
         # يمكنك تغيير كلمة المرور من هنا (بدل '1234')
-        if st.session_state["password"] == "Asd12345":
+        if st.session_state["password"] == "Asd12345@":
             st.session_state["password_correct"] = True
             del st.session_state["password"]  # مسح كلمة المرور من الذاكرة للأمان
         else:
