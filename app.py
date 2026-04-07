@@ -106,11 +106,19 @@ df = load_data()
 
 # --- 2. خيارات العرض ---
 st.sidebar.header("🔍 خيارات العرض")
-view_option = st.sidebar.radio("المدى الزمني:", ["كل التواريخ", "تاريخ محدد"])
+
+# قمنا بوضع "تاريخ محدد" كأول عنصر في القائمة
+view_option = st.sidebar.radio(
+    "المدى الزمني:", 
+    ["تاريخ محدد", "كل التواريخ"], 
+    index=0  # لضمان اختيار التاريخ المحدد تلقائياً عند الفتح
+)
+
 selected_date = datetime.now().date()
 if view_option == "تاريخ محدد":
     selected_date = st.sidebar.date_input("اختر اليوم", datetime.now())
 
+# استكمال باقي المنطق البرمجي للفلترة...
 if not df.empty:
     mask = pd.Series([True] * len(df))
     if view_option == "تاريخ محدد":
