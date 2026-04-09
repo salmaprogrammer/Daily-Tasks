@@ -3,6 +3,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime, timedelta
+import plotly.express as px  # إضافة مكتبة الرسوم البيانية
 
 # --- إعدادات الصفحة ---
 st.set_page_config(page_title="مدير المهام الاحترافي", page_icon="📅", layout="wide")
@@ -11,29 +12,24 @@ st.set_page_config(page_title="مدير المهام الاحترافي", page_i
 def check_password():
     """دالة للتحقق من كلمة المرور"""
     def password_entered():
-        # يمكنك تغيير كلمة المرور من هنا (بدل '1234')
         if st.session_state["password"] == "Asd12345@":
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # مسح كلمة المرور من الذاكرة للأمان
+            del st.session_state["password"]
         else:
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
-        # شاشة الدخول لأول مرة
         st.title("🔐 تسجيل الدخول")
         st.text_input("أدخل كلمة المرور للوصول للنظام", type="password", on_change=password_entered, key="password")
         return False
     elif not st.session_state["password_correct"]:
-        # في حال كانت كلمة المرور خطأ
         st.title("🔐 تسجيل الدخول")
         st.text_input("كلمة المرور غير صحيحة، حاول مجدداً", type="password", on_change=password_entered, key="password")
         st.error("❌ عذراً، كلمة المرور خاطئة")
         return False
     else:
-        # كلمة المرور صحيحة
         return True
 
-# إذا فشل التحقق من كلمة المرور، توقف عن تنفيذ باقي الكود
 if not check_password():
     st.stop()
 
@@ -73,7 +69,7 @@ def load_data():
         return df
     return pd.DataFrame(columns=['Date', 'Task', 'Status', 'Category'])
 
-# --- واجهة المستخدم الرئيسية (تظهر بعد الدخول) ---
+# --- واجهة المستخدم الجانبية ---
 st.sidebar.success("تم تسجيل الدخول بنجاح ✅")
 if st.sidebar.button("تسجيل الخروج"):
     st.session_state["password_correct"] = False
@@ -104,21 +100,19 @@ with st.expander("➕ إضافة مهمة جديدة", expanded=False):
 st.divider()
 df = load_data()
 
-# --- 2. خيارات العرض ---
+# --- 2. خيارات العرض (تم التعديل ليكون التاريخ المحدد أولاً) ---
 st.sidebar.header("🔍 خيارات العرض")
-
-# قمنا بوضع "تاريخ محدد" كأول عنصر في القائمة
 view_option = st.sidebar.radio(
     "المدى الزمني:", 
     ["تاريخ محدد", "كل التواريخ"], 
-    index=0  # لضمان اختيار التاريخ المحدد تلقائياً عند الفتح
+    index=0
 )
 
 selected_date = datetime.now().date()
 if view_option == "تاريخ محدد":
     selected_date = st.sidebar.date_input("اختر اليوم", datetime.now())
 
-# استكمال باقي المنطق البرمجي للفلترة...
+# فلترة البيانات
 if not df.empty:
     mask = pd.Series([True] * len(df))
     if view_option == "تاريخ محدد":
@@ -137,7 +131,7 @@ if view_option == "تاريخ محدد":
             sheet.append_rows(rows)
             st.rerun()
 
-# --- 4. عرض الجدول النهائي ---
+# --- 4. عرض جدول المهام ---
 st.subheader(f"📋 قائمة المهام: {selected_date if view_option == 'تاريخ محدد' else 'الكل'}")
 
 if not filtered_df.empty:
@@ -192,38 +186,32 @@ if not filtered_df.empty:
         st.markdown("<hr style='margin:0; padding:0; opacity:0.1'>", unsafe_allow_html=True)
 else:
     st.info("لا توجد مهام معروضة حالياً.")
-# --- 5. الإحصائيات والرسوم البيانية ---
+
+# --- 5. التحليل البياني (الإضافة الجديدة) ---
 st.divider()
-st.subheader("📊 تحليل الإنجاز")
+st.subheader("📊 تحليل الإنجاز الإجمالي")
 
 if not df.empty:
-    # فلترة المهام التي تمت فقط
+    # فلترة المهام المكتملة فقط لحساب التكرار
     completed_tasks = df[df['Status'] == "تم"]
-
+    
     if not completed_tasks.empty:
-        # حساب تكرار كل مهمة
+        # تجهيز البيانات للرسم البياني
         task_counts = completed_tasks['Task'].value_counts().reset_index()
         task_counts.columns = ['المهمة', 'عدد مرات الإتمام']
-
-        # إنشاء الرسم البياني باستخدام Plotly
+        
+        # إنشاء الرسم البياني
         fig = px.bar(
             task_counts, 
             x='المهمة', 
             y='عدد مرات الإتمام',
-            title="عدد مرات إنجاز كل مهمة (إجمالي)",
             color='عدد مرات الإتمام',
-            color_continuous_scale='Greens'
+            color_continuous_scale='Greens',
+            title="إحصائيات المهام المنجزة"
         )
         
-        # تحسين مظهر الرسم ليدعم العربية
-        fig.update_layout(
-            xaxis_title="المهمة",
-            yaxis_title="التكرار",
-            font=dict(size=14)
-        )
-
+        # تحسين الخطوط والتنسيق
+        fig.update_layout(xaxis={'categoryorder':'total descending'})
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("لم يتم إكمال أي مهام بعد لإظهار الإحصائيات.")
-else:
-    st.info("لا توجد بيانات كافية لإنشاء الرسم البياني.")
+        st.info("أتمم بعض المهام أولاً ليظهر لك تحليل الإنجاز هنا! 🚀")
