@@ -192,3 +192,38 @@ if not filtered_df.empty:
         st.markdown("<hr style='margin:0; padding:0; opacity:0.1'>", unsafe_allow_html=True)
 else:
     st.info("لا توجد مهام معروضة حالياً.")
+# --- 5. الإحصائيات والرسوم البيانية ---
+st.divider()
+st.subheader("📊 تحليل الإنجاز")
+
+if not df.empty:
+    # فلترة المهام التي تمت فقط
+    completed_tasks = df[df['Status'] == "تم"]
+
+    if not completed_tasks.empty:
+        # حساب تكرار كل مهمة
+        task_counts = completed_tasks['Task'].value_counts().reset_index()
+        task_counts.columns = ['المهمة', 'عدد مرات الإتمام']
+
+        # إنشاء الرسم البياني باستخدام Plotly
+        fig = px.bar(
+            task_counts, 
+            x='المهمة', 
+            y='عدد مرات الإتمام',
+            title="عدد مرات إنجاز كل مهمة (إجمالي)",
+            color='عدد مرات الإتمام',
+            color_continuous_scale='Greens'
+        )
+        
+        # تحسين مظهر الرسم ليدعم العربية
+        fig.update_layout(
+            xaxis_title="المهمة",
+            yaxis_title="التكرار",
+            font=dict(size=14)
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("لم يتم إكمال أي مهام بعد لإظهار الإحصائيات.")
+else:
+    st.info("لا توجد بيانات كافية لإنشاء الرسم البياني.")
